@@ -283,8 +283,8 @@ send(self.addrs[target], {"type": "GENERATE", "epoch": epoch})
 ### 6.2 Execução rápida (tudo em uma máquina)
 
 ```bash
-git clone <URL-do-repositório>
-cd token-ring
+git clone <https://github.com/joaopintoferreira/token-ring-sd-grupo4.git>
+cd token-ring-sd-grupo4
 python server.py --nodes 5
 ```
 
