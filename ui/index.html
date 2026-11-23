@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exclusão mútua com Token Ring</title>
+<style>
+  :root{
+    --bg:#F4F1EA; --ink:#0F1B2D; --muted:#5B6677; --card:#FFFFFF; --line:#D9DEE5;
+    --idle:#8895A8; --wait:#E0A030; --cs:#1F9E89; --fail:#C8473B; --token:#F2B705; --accent:#1F6F8B;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+  header{background:var(--ink);color:#F4F1EA;padding:16px 28px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  header h1{margin:0;font-size:20px;font-weight:700;letter-spacing:.2px}
+  header span{color:#9AA5B5;font-size:13px}
+  main{max-width:1280px;margin:20px auto;padding:0 20px;display:grid;grid-template-columns:minmax(380px,560px) 1fr;gap:20px}
+  @media (max-width:980px){main{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card h2{margin:0 0 12px;font-size:13px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted)}
+  svg{width:100%;height:auto;display:block}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--muted)}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .stat{background:#F7F8FA;border-radius:10px;padding:10px 12px}
+  .stat b{display:block;font-size:24px;line-height:1.1}
+  .stat small{color:var(--muted);font-size:12px}
+  .ok{color:var(--cs)} .bad{color:var(--fail)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:7px 6px;text-align:left;border-bottom:1px solid var(--line)}
+  th{font-size:12px;color:var(--muted);font-weight:600}
+  .badge{display:inline-block;padding:2px 9px;border-radius:99px;color:#fff;font-size:12px;font-weight:600}
+  button{font:inherit;border:1px solid var(--line);background:#fff;color:var(--ink);padding:5px 11px;border-radius:8px;cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover:not(:disabled){color:#fff;filter:brightness(1.1)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .ctl{display:flex;align-items:center;gap:8px;font-size:14px}
+  input[type=range]{width:130px}
+  .right{display:flex;flex-direction:column;gap:20px}
+  #log{grid-column:1/-1}
+  #logbox{height:230px;overflow:auto;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#0F1B2D;color:#D6DCE6;border-radius:10px;padding:10px 12px}
+  #logbox div{white-space:pre-wrap}
+  .k-cs{color:#6FD6C2}.k-err{color:#FF8E80}.k-warn{color:#F2C56B}.k-req{color:#8FC1FF}.k-ok{color:#9BE29B}
+  .node-g{cursor:pointer}
+  .node-g circle.body{transition:fill .25s,stroke .25s}
+  #token{transition:transform .45s ease-in-out}
+  .hint{font-size:13px;color:var(--muted);margin-top:8px}
+  .alert{display:none;margin-top:12px;background:#FFF3CD;border:1px solid #F2C56B;border-radius:10px;padding:8px 12px;font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Exclusão mútua distribuída com Token Ring</h1>
+  <span>Sistemas Distribuídos · UFSC Araranguá · Grupo 4</span>
+</header>
+<main>
+  <section class="card">
+    <h2>Anel lógico</h2>
+    <svg id="ring" viewBox="0 0 560 560" role="img" aria-label="Anel de processos com o token">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#9AA5B5"/>
+        </marker>
+      </defs>
+      <g id="edges"></g>
+      <g id="nodes"></g>
+      <g id="token" transform="translate(280,280)">
+        <circle r="13" fill="#F2B705" stroke="#8A6A00" stroke-width="2"/>
+        <text y="4.5" text-anchor="middle" font-size="13" font-weight="700" fill="#5A4300">T</text>
+      </g>
+    </svg>
+    <div class="legend">
+      <span><i style="background:var(--idle)"></i>ocioso</span>
+      <span><i style="background:var(--wait)"></i>aguardando o token</span>
+      <span><i style="background:var(--cs)"></i>na seção crítica</span>
+      <span><i style="background:var(--fail)"></i>falho</span>
+      <span><i style="background:var(--token)"></i>token</span>
+    </div>
+    <div class="hint">Clique em um nó para pedir a seção crítica. O nó só entra quando o token chegar até ele.</div>
+    <div class="alert" id="alert"></div>
+  </section>
+
+  <div class="right">
+    <section class="card">
+      <h2>Recurso compartilhado e token</h2>
+      <div class="stats">
+        <div class="stat"><b id="s-counter">0</b><small>contador do recurso</small></div>
+        <div class="stat"><b id="s-entries">0</b><small>entradas na seção crítica</small></div>
+        <div class="stat"><b id="s-viol">0</b><small>violações de exclusão mútua</small></div>
+        <div class="stat"><b id="s-epoch">0</b><small>época do token</small></div>
+        <div class="stat"><b id="s-passes">0</b><small>passagens do token</small></div>
+        <div class="stat"><b id="s-regen">0</b><small>tokens regenerados</small></div>
+      </div>
+      <div class="hint">Com a exclusão mútua funcionando, o contador é sempre igual ao número de entradas e as violações ficam em zero.</div>
+    </section>
+
+    <section class="card">
+      <h2>Processos</h2>
+      <table>
+        <thead><tr><th>Nó</th><th>Estado</th><th>Pedidos</th><th>Entradas</th><th>Ações</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="row">
+        <button class="primary" id="btn-all">Pedir em todos os nós</button>
+        <button id="btn-regen">Regenerar token</button>
+        <button id="btn-reset">Zerar contadores</button>
+      </div>
+      <div class="row">
+        <label class="ctl">Tempo na seção crítica <input type="range" id="r-cs" min="0.1" max="3" step="0.1"> <b id="v-cs"></b></label>
+        <label class="ctl">Pausa ao repassar <input type="range" id="r-pass" min="0.1" max="2" step="0.1"> <b id="v-pass"></b></label>
+        <label class="ctl"><input type="checkbox" id="c-auto"> regenerar token se for perdido</label>
+      </div>
+    </section>
+  </div>
+
+  <section class="card" id="log">
+    <h2>Registro de eventos</h2>
+    <div id="logbox"></div>
+  </section>
+</main>
+
+<script>
+const COLORS = {idle:'#8895A8', waiting:'#E0A030', cs:'#1F9E89', falho:'#C8473B'};
+const LABEL  = {idle:'ocioso', waiting:'aguardando', cs:'na seção crítica', falho:'falho'};
+const CX = 280, CY = 280, R = 205, NR = 40;
+let N = 0, last = null, built = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const pos = i => { const a = -Math.PI/2 + 2*Math.PI*i/N; return [CX + R*Math.cos(a), CY + R*Math.sin(a)]; };
+
+async function post(path, body){
+  const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})});
+  return r.json();
+}
+
+function build(n){
+  N = n; built = true;
+  let edges = '', nodes = '', rows = '';
+  for(let i=0;i<N;i++){
+    const [x1,y1] = pos(i), [x2,y2] = pos((i+1)%N);
+    const a1 = Math.atan2(y2-y1, x2-x1);
+    const sx = x1 + (NR+4)*Math.cos(a1), sy = y1 + (NR+4)*Math.sin(a1);
+    const ex = x2 - (NR+9)*Math.cos(a1), ey = y2 - (NR+9)*Math.sin(a1);
+    edges += `<line x1="${sx}" y1="${sy}" x2="${ex}" y2="${ey}" stroke="#9AA5B5" stroke-width="2" marker-end="url(#arr)"/>`;
+    nodes += `<g class="node-g" data-i="${i}" transform="translate(${x1},${y1})">
+      <circle class="body" r="${NR}" fill="${COLORS.idle}" stroke="#0F1B2D" stroke-width="2"/>
+      <text class="lbl" y="-2" text-anchor="middle" font-size="20" font-weight="700" fill="#fff">${i}</text>
+      <text class="sub" y="17" text-anchor="middle" font-size="11" fill="#fff">ocioso</text></g>`;
+    rows += `<tr data-i="${i}"><td><b>Nó ${i}</b></td><td><span class="badge"></span></td><td class="pend">0</td><td class="ent">0</td>
+      <td><button class="b-req">Solicitar</button> <button class="b-fail">Falhar</button></td></tr>`;
+  }
+  $('edges').innerHTML = edges; $('nodes').innerHTML = nodes; $('rows').innerHTML = rows;
+  document.querySelectorAll('.node-g').forEach(g => g.onclick = () => post('/api/request', {node:+g.dataset.i}));
+  document.querySelectorAll('#rows tr').forEach(tr => {
+    const i = +tr.dataset.i;
+    tr.querySelector('.b-req').onclick = () => post('/api/request', {node:i});
+    tr.querySelector('.b-fail').onclick = () => {
+      const failed = last && last.nodes[i].state === 'falho' || (last && !last.nodes[i].alive);
+      post(failed ? '/api/recover' : '/api/fail', {node:i});
+    };
+  });
+}
+
+function render(s){
+  if(!built || N !== s.n) build(s.n);
+  $('s-counter').textContent = s.counter;
+  $('s-entries').textContent = s.entries;
+  const v = $('s-viol'); v.textContent = s.violations; v.className = s.violations ? 'bad' : 'ok';
+  $('s-epoch').textContent = s.epoch;
+  $('s-passes').textContent = s.token_passes;
+  $('s-regen').textContent = s.regenerations;
+
+  for(let i=0;i<N;i++){
+    const nd = s.nodes[i];
+    const st = nd.alive ? nd.state : 'falho';
+    const g = document.querySelector(`.node-g[data-i="${i}"]`);
+    g.querySelector('.body').setAttribute('fill', COLORS[st] || COLORS.idle);
+    g.querySelector('.sub').textContent = st === 'cs' ? 'seção crítica' : (LABEL[st] || st);
+    const tr = document.querySelector(`#rows tr[data-i="${i}"]`);
+    const b = tr.querySelector('.badge'); b.textContent = LABEL[st] || st; b.style.background = COLORS[st] || COLORS.idle;
+    tr.querySelector('.pend').textContent = nd.pending;
+    tr.querySelector('.ent').textContent = nd.entries;
+    tr.querySelector('.b-req').disabled = !nd.alive;
+    const fb = tr.querySelector('.b-fail');
+    fb.textContent = nd.alive ? 'Falhar' : 'Recuperar';
+    fb.disabled = !s.can_spawn;
+  }
+
+  // posição do token: sobre o nó que o detém, ou no meio do caminho quando em trânsito
+  let tx = CX, ty = CY, show = true;
+  if(s.token_holder !== null && s.token_holder !== undefined){
+    const [x,y] = pos(s.token_holder);
+    tx = x; ty = y - NR - 4;
+    if(s.token_to !== null && s.token_to !== undefined){
+      const [x2,y2] = pos(s.token_to);
+      tx = (x+x2)/2; ty = (y+y2)/2;
+    }
+  } else show = false;
+  $('token').style.opacity = show ? 1 : .25;
+  $('token').setAttribute('transform', `translate(${tx},${ty})`);
+
+  const al = $('alert');
+  if(s.token_started !== false && s.token_age > s.token_timeout/2 && s.token_age > 3){
+    al.style.display = 'block';
+    al.textContent = `O token não aparece há ${s.token_age}s (limite ${s.token_timeout}s). ` +
+      (s.auto_regen ? 'Se continuar assim, será gerado um novo token.' : 'Use "Regenerar token".');
+  } else al.style.display = 'none';
+
+  const setSlider = (id, vid, val) => { if(document.activeElement !== $(id)) $(id).value = val; $(vid).textContent = (+$(id).value).toFixed(1)+' s'; };
+  setSlider('r-cs','v-cs', s.cfg.cs_time); setSlider('r-pass','v-pass', s.cfg.pass_delay);
+  if(document.activeElement !== $('c-auto')) $('c-auto').checked = s.auto_regen;
+
+  const box = $('logbox');
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+  box.innerHTML = s.log.map(l => `<div class="k-${l.kind}">${l.t}  ${l.node!==null?'[nó '+l.node+'] ':''}${esc(l.msg)}</div>`).join('');
+  if(atBottom) box.scrollTop = box.scrollHeight;
+  last = s;
+}
+
+async function tick(){
+  try { render(await (await fetch('/api/state')).json()); } catch(e) {}
+  setTimeout(tick, 350);
+}
+
+$('btn-all').onclick = () => { for(let i=0;i<N;i++) post('/api/request', {node:i}); };
+$('btn-regen').onclick = () => post('/api/regenerate');
+$('btn-reset').onclick = () => post('/api/reset');
+$('r-cs').onchange = e => post('/api/config', {cs_time:+e.target.value});
+$('r-pass').onchange = e => post('/api/config', {pass_delay:+e.target.value});
+$('c-auto').onchange = e => post('/api/config', {auto_regen:e.target.checked});
+$('r-cs').oninput = e => $('v-cs').textContent = (+e.target.value).toFixed(1)+' s';
+$('r-pass').oninput = e => $('v-pass').textContent = (+e.target.value).toFixed(1)+' s';
+tick();
+</script>
+</body>
+</html>
